@@ -101,6 +101,8 @@ int min_size = 500;
 
 
 
+
+
 PointCloudMapping::PointCloudMapping(double resolution_) {
 
     this->resolution = resolution_;
@@ -137,16 +139,88 @@ void PointCloudMapping::insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& de
     keyFrameUpdated.notify_one();
 }
 
+//void test()
+//{
+//    cv::Mat img_1 = cv::imread("22.png");
+//    //cv::Mat color01 = dye_gray(img_1);
+//
 
+//    detector.Create("yolov3.weights", "yolov3.cfg", "coco.names");
+//    std::vector<cv::Scalar> colors;
+//    for (int i = 0; i < 80; i++) {
+//        colors.push_back(cv::Scalar(rand() % 127 + 128, rand() % 127 + 128, rand() % 127 + 128));
+//    }
+//
+//    std::vector<BoxSE> boxes = detector.Detect(img_1, 0.5F);
+//    int n = boxes.size();
+//    //continue;
+//    //for (BoxSE &box : boxes)
+//    for (int i = 0; i < n; i++) {
+//        //cv::putText(img, detector.Names(box.m_class), box.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0, colors[box.m_class], 2);
+//        //cv::rectangle(img, box, colors[box.m_class], 2);
+//        cv::rectangle(img_1, boxes[i].tl(), boxes[i].br(), colors[boxes[i].m_class], -1, 4);
+//    }
+//    cv::imshow("frame",img_1);
+//    cv::imwrite("test0444444444.png", img_1);
+//    cv::waitKey(0);
+//    detector.Release();
+//}
+
+cv::Mat PointCloudMapping::dye_gray(cv::Mat &gray)
+{
+    cv::Mat mat;
+    YOLOv3 detect;
+
+    std::vector<cv::Scalar> colors;
+    for (int i = 0; i < 80; i++) {
+        colors.push_back(cv::Scalar(rand() % 127 + 128, rand() % 127 + 128, rand() % 127 + 128));
+    }
+    detect.Create("yolov2-tiny.weights", "yolov2-tiny.cfg", "coco.names");
+    std::vector<BoxSE> boxes = detect.Detect(gray, 0.5F);
+    cout <<"22222222222"<<endl;
+    //continue;
+    int n = boxes.size();
+    for (int i = 0; i < n; i++) {
+        //cv::putText(img, detector.Names(box.m_class), box.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0, colors[box.m_class], 2);
+        //cv::rectangle(img, box, colors[box.m_class], 2);
+        cv::rectangle(gray, boxes[i].tl(), boxes[i].br(), colors[boxes[i].m_class], -1, 4);
+    }
+    cout <<"5555555"<<endl;
+    gray.copyTo(mat);
+    return mat;
+}
 
 
 pcl::PointCloud< PointCloudMapping::PointT >::Ptr PointCloudMapping::generatePointCloud(KeyFrame* kf, cv::Mat& color, cv::Mat& depth)
 {
+  //这里的条件很硬　kf和深度图的像素一定要一样才可以　color生成的情况就是拿kf生成的　所以没事
     PointCloud::Ptr tmp( new PointCloud() );
     // point cloud is null ptr
+#ifdef stereo_case
+    for ( int m=0; m<depth.rows; m+=1 )
+    {
+        for ( int n=0; n<depth.cols; n+=1 )//why is 3???? I guess it is be
+        {
+            float d = depth.ptr<float>(m)[n];
+            if (d < 0.01 || d>25)
+                continue;
+            PointT p;
+            p.z = d;
+            p.x = ( n - kf->cx) * p.z / kf->fx;
+            p.y = ( m - kf->cy) * p.z / kf->fy;
+
+            p.b = color.ptr<uchar>(m)[n*3];
+	    //还是得改咯
+            p.g = color.ptr<uchar>(m)[n*3+1];
+            p.r = color.ptr<uchar>(m)[n*3+2];
+
+            tmp->points.push_back(p);
+        }
+    }
+#else
     for ( int m=0; m<depth.rows; m+=3 )
     {
-        for ( int n=0; n<depth.cols; n+=3 )
+        for ( int n=0; n<depth.cols; n+=3 )//why is 3???? I guess it is be
         {
             float d = depth.ptr<float>(m)[n];
             if (d < 0.01 || d>10)
@@ -160,100 +234,31 @@ pcl::PointCloud< PointCloudMapping::PointT >::Ptr PointCloudMapping::generatePoi
             p.g = color.ptr<uchar>(m)[n*3+1];
             p.r = color.ptr<uchar>(m)[n*3+2];
 
-//            if(p.b == p.g || p.b == p.r)
-//                continue;
-
-
             tmp->points.push_back(p);
         }
     }
-
+#endif
+//transformation 
     Eigen::Isometry3d T = ORB_SLAM2::Converter::toSE3Quat( kf->GetPose() );
     PointCloud::Ptr cloud(new PointCloud);
     pcl::transformPointCloud( *tmp, *cloud, T.inverse().matrix());
-    cloud->is_dense = false;
+    cloud->is_dense = false;//True if no points are invalid (e.g., have NaN or Inf values in any of their floating point fields). 
 
     cout<<"generate point cloud for kf "<<kf->mnId<<", size="<<cloud->points.size()<<endl;
     return cloud;
 }
 
-
-
-//void PointCloudMapping::viewer()
-//{
-//    pcl::visualization::CloudViewer viewer("viewer");
-//    while(1)
-//    {
-//        {
-//            unique_lock<mutex> lck_shutdown( shutDownMutex );
-//            if (shutDownFlag)
-//            {
-//                break;
-//            }
-//        }
-//        {
-//            unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );
-//            keyFrameUpdated.wait( lck_keyframeUpdated );
-//        }
-//
-//        // keyframe is updated
-//        size_t N=0;
-//        {
-//            unique_lock<mutex> lck( keyframeMutex );
-//            N = keyframes.size();
-//        }
-//
-//        for ( size_t i=lastKeyframeSize; i<N ; i++ )
-//        {
-//            PointCloud::Ptr prep = generatePointCloud( keyframes[i], colorImgs[i], depthImgs[i] );
-//            PointCloud::Ptr p = regionGrowingSeg(prep);
-//            *globalMap += *p;
-//        }
-//        //PointCloud::Ptr tmp(new PointCloud());
-//        voxel.setInputCloud( globalMap );
-////        voxel.filter( *tmp );
-////        globalMap->swap( *tmp );
-//        viewer.showCloud( globalMap );
-//        cout << "show global map, size=" << globalMap->points.size() << endl;
-//        lastKeyframeSize = N;
-//    }
-//
-// }
-
-
-
 void PointCloudMapping::viewer()
 {
     std::vector<cv::Scalar> colors;
-    string line, number;
-    ifstream f("color.txt");
-    if (!f.good())
-    {
-        cout << "Cannot open file" << endl;
-        exit(-1);
+    for (int i = 0; i < 80; i++) {// for what??? this randow principle is ok????
+        colors.push_back(cv::Scalar(rand() % 127 + 128, rand() % 127 + 128, rand() % 127 + 128));
     }
-
-
-
-    vector<int> v;
-    while(std::getline(f, line))
-    {
-        istringstream is(line);
-
-        while(std::getline(is, number, ','))
-        {
-            v.push_back(atoi(number.c_str()));
-        }
-        colors.push_back(cv::Scalar(v[0],v[1],v[2]));
-        v.clear();
-    }
-//    for (int i = 0; i < 80; i++) {
-//        colors.push_back(cv::Scalar(rand() % 127 + 128, rand() % 127 + 128, rand() % 127 + 128));
-//    }
 
     detector.Create("yolov3.weights", "yolov3.cfg", "coco.names");
     sleep(3);
     pcl::visualization::CloudViewer viewer("viewer");
+    //all aboves are in intialization
 
     while(1)
     {
@@ -281,7 +286,7 @@ void PointCloudMapping::viewer()
 
         {
 
-            for (size_t i=lastKeyframeSize; i<N ; i++) {
+            for (size_t i=lastKeyframeSize; i<N ; i++) {// this for loop is supposed to be one cycle
 
                 cv::Mat tmp_color = colorImgs[i];
                 char img[20];
@@ -292,42 +297,51 @@ void PointCloudMapping::viewer()
                 //*globalMap += *pre_p;
                 //sleep(3);
                 cv::Mat img_tmp_color = cv::imread(img);
+		// this seires of operations is stupid hhhhh, but I can't figure out better one, either
+		
                 std::vector<BoxSE> boxes = detector.Detect(img_tmp_color, 0.5F);
+		//I really don't know how the author make the class BoxSE and the YOLOv3SE.h
+		
                 //continue;
-                int n = boxes.size();
+                int n = boxes.size();//the number of elements in the boxes.
                 for (int i = 0; i < n; i++) {
-                    if(boxes[i].m_class_name == "person")
-                    {
-                        cv::rectangle(img_tmp_color, boxes[i].tl(), boxes[i].br(), colors[80], -1, 4);
-                    }
                     //cv::putText(img, detector.Names(box.m_class), box.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0, colors[box.m_class], 2);
                     //cv::rectangle(img, box, colors[box.m_class], 2);
                     cv::rectangle(img_tmp_color, boxes[i].tl(), boxes[i].br(), colors[boxes[i].m_class], -1, 4);
+		    //img 图像. pt1 矩形的一个顶点。 pt2 矩形对角线上的另一个顶点 color 线条颜色 (RGB) 或亮度（灰度图像 ）(grayscale image）。 
+		    //thickness 组成矩形的线条的粗细程度。取负值时（如 CV_FILLED）函数绘制填充了色彩的矩形。  4表示线段类型　4-connected line(4邻接)连接线
                 }
+                // I guess this step stores the semantic labels and color it.
+                //这里很神奇　直接对这个图染色了　然后把这个带了颜色（在作者心中就是标签信息了）的图直接给点云那边生成　生成好了加到大图里面
                 PointCloud::Ptr surf_p = generatePointCloud(keyframes[i], img_tmp_color, depthImgs[i]);
                 //PointCloud::Ptr p = RegionGrowingSeg(surf_p);
 
-                *globalMap += *surf_p;
+                *globalMap += *surf_p;//without any filter operations, just make a rough map and use this map to segment
 
             }
 
 
         }
-
+        //PointCloud::Ptr tmp(new PointCloud());
         voxel.setInputCloud( globalMap );
-
+        //voxel.filter( *tmp );
+        //globalMap->swap( *tmp );
         viewer.showCloud( globalMap );
 //      pcl::PointCloud<pcl::PointXYZ> ply_file;
 //      PointCloudXYZRGBAtoXYZ(*globalMap,ply_file);
 
         cout << "show global map, size=" << globalMap->points.size() << endl;
         lastKeyframeSize = N;
+        //boost::this_thread::sleep (boost::posix_time::microseconds (10));
+        //system("chmod -R 777 /home/catkin_ws/img/*");
 
     }
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PCDWriter pcdwriter;
     pcdwriter.write<pcl::PointXYZRGBA>("global_color.pcd", *globalMap);//write global point cloud map and save to a pcd file
-    cpf_seg(globalMap);
+    cout<<"next is the segmentation I guess"<<endl;//zbq
+    cpf_seg(globalMap);// do segmentation in the yolov3 conducted semantic map.
+     cout<<"seamentation okay?"<<endl;
     detector.Release();
     /*
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
@@ -342,9 +356,9 @@ void PointCloudMapping::viewer()
     plywriter.write<pcl::PointXYZ>("test.ply",ply_file,true);
 
      */
-
+    cout<<"next is the final_process"<<endl;
     //poisson_reconstruction(globalMap);
-    //final_process();
+    final_process();
     //exit(0);
 
 
@@ -364,8 +378,9 @@ void PointCloudMapping::final_process()
     pointcloudL::Ptr ll (new pointcloudL);
 
     pcl::io::loadPCDFile<pcl::PointXYZRGBA>("global_color.pcd",*tgt);
-    pcl::io::loadPCDFile<pcl::PointXYZL>("segmentation.pcd",*ll);
-
+    pcl::io::loadPCDFile<pcl::PointXYZL>("cfg_test03.pcd",*ll);
+    cout<<"loadPCDFile already"<<endl;
+    
     PointCloudT Final1 = *tgt;
     pcl::PointCloud<pcl::PointXYZL> lcloud = *ll;
     //cout <<lcloud.size()<<endl;
@@ -391,32 +406,32 @@ void PointCloudMapping::final_process()
 
 
 
-        if(b==0&&g==254&&r==124){//0,252,124
+        if(b==138&&g==228&&r==148){
             //cout <<r<<endl;//monitor
             vmonitor.push_back(i);
             lcloud[i].label = 300;
 
         }
-        if(b==203&&g==192&&r==255){//203,192,255
+        if(b==185&&g==168&&r==221){
             //cout <<r<<endl;//mouse
             vmouse.push_back(i);
             lcloud[i].label = 400;
 
         }
-        if(b==128&&g==249&&r==237){//128,249,237
+        if(b==149&&g==224&&r==208){
             //cout <<r<<endl;//keyboard
             vkeyboard.push_back(i);
             lcloud[i].label = 500;
 
         }
-        if(b==50&&g==205&&r==50){//50,205,50
+        if(b==183&&g==234&&r==167){
             //cout <<r<<endl;//teddy bear
             vteddy.push_back(i);
             lcloud[i].label = 600;
 
 
         }
-        if(b==240&&g==160&&r==120){//240,160,120
+        if(b==212&&g==138&&r==132){
             //cout <<r<<endl;//cup
             vcup.push_back(i);
             lcloud[i].label = 700;
@@ -616,7 +631,7 @@ void PointCloudMapping::poisson_reconstruction(pcl::PointCloud<pcl::PointXYZRGBA
     io::savePLYFile("object_mesh.ply", mesh);
 }
 
-
+//it is the segmentation I guess
 void PointCloudMapping::cpf_seg(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr input_cloud_ptr)
 {
     APC::Segmentation seg;
@@ -634,7 +649,7 @@ void PointCloudMapping::cpf_seg(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr input_cl
     sor.filter(*cloud_filtered);
     std::cerr << "Number of points after filtered " << cloud_filtered->size() << std::endl;
     seg.setPointCloud(input_cloud_ptr);
-    seg.doSegmentation();
+    seg.doSegmentation();//go to the segmentation.cc
     pcl::PointCloud<pcl::PointXYZL>::Ptr segmented_cloud_ptr;
     segmented_cloud_ptr = seg.getSegmentedPointCloud();
     bool save_binary_pcd = false;
@@ -967,7 +982,8 @@ enforceCurvatureOrIntensitySimilarity (const PointTypeFull& point_a, const Point
     return (false);
 }
 
-bool customRegionGrowing (const PointTypeFull& point_a, const PointTypeFull& point_b, float squared_distance)
+bool
+customRegionGrowing (const PointTypeFull& point_a, const PointTypeFull& point_b, float squared_distance)
 {
     Eigen::Map<const Eigen::Vector3f> point_a_normal = point_a.getNormalVector3fMap (), point_b_normal = point_b.getNormalVector3fMap ();
     if (squared_distance < 10000)

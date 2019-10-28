@@ -88,22 +88,23 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Create KeyFrame Database
     mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
-
+   cout<<"step 1"<<endl;
     //Create the Map
     mpMap = new Map();
 
     //Create Drawers. These are used by the Viewer
     mpFrameDrawer = new FrameDrawer(mpMap);
     mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
-
+     cout<<"step 2"<<endl;
     // Initialize pointcloud mapping
     mpPointCloudMapping = make_shared<PointCloudMapping>( resolution );
-
+     cout<<"step 3 point cloud"<<endl;
+     
     //Initialize the Tracking thread
     //(it will live in the main thread of execution, the one that called this constructor)
-    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpMap, mpPointCloudMapping, mpKeyFrameDatabase, strSettingsFile, mSensor);
+     mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,mpMap, mpPointCloudMapping, mpKeyFrameDatabase, strSettingsFile, mSensor);
 
+    cout<<"step 4"<<endl;
     //Initialize the Local Mapping thread and launch
     mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
     mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
@@ -111,7 +112,11 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Initialize the Loop Closing thread and launch
     mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
-
+    
+     cout<<"step 5"<<endl;
+   
+    
+    
     //Initialize the Viewer thread and launch
     if(bUseViewer)
     {
@@ -119,7 +124,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         mptViewer = new thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
     }
-
+    cout<<"step 6"<<endl;
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
     mpTracker->SetLoopClosing(mpLoopCloser);
@@ -129,6 +134,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     mpLoopCloser->SetTracker(mpTracker);
     mpLoopCloser->SetLocalMapper(mpLocalMapper);
+     cout<<"system okay!"<<endl;;
 }
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)

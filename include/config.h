@@ -12,7 +12,7 @@ namespace APC {
 class Config{
 public:
 
-    Config():voxel_resolution(0.01f),
+    Config():voxel_resolution(0.01f),//0.01f
         seed_resolution(0.1f),
         color_importance (1.0f),
         spatial_importance (0.4f),
